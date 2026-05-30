@@ -72,7 +72,8 @@ The ultimate goal of **C2Lux** is to become a highly flexible environment for gr
 ```bash
 git clone https://github.com/con2222/C2Lux.git
 cd C2Lux
-mkdir build && cd build
-cmake ..
-cmake --build .
+
+# On Linux, specify USE_WAYLAND=ON or USE_X11=ON
+cmake -S . -B build
+cmake --build build
 ```

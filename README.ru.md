@@ -72,7 +72,8 @@
 ```bash
 git clone https://github.com/con2222/C2Lux.git
 cd C2Lux
-mkdir build && cd build
-cmake ..
-cmake --build .
+
+# На Linux укажите USE_WAYLAND=ON или USE_X11=ON
+cmake -S . -B build
+cmake --build build
 ```
