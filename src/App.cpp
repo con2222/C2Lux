@@ -22,13 +22,13 @@ void printMatrix(const std::string& name, const glm::mat4& m) {
 }
 
 namespace C2Lux {
-
+    
 App::~App() {
     uiLayer.destroy();
     glfwTerminate();
 }
 
-App::App(std::unique_ptr<Window> window) : mainWindow(std::move(window)), appState(AppState::Startup) {}
+App::App(std::unique_ptr<Window> window) : mainWindow(std::move(window)), appState(AppState::Startup), bisRunning(true) {}
 
 bool App::initWebGPU() {
     if (!renderer.initInstance()) return false;
