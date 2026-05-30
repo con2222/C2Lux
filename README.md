@@ -70,7 +70,7 @@ The ultimate goal of **C2Lux** is to become a highly flexible environment for gr
 
 ### Compilation
 ```bash
-git clone [https://github.com/con2222/C2Lux.git](https://github.com/con2222/C2Lux.git)
+git clone https://github.com/con2222/C2Lux.git
 cd C2Lux
 mkdir build && cd build
 cmake ..
