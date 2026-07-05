@@ -39,8 +39,7 @@ bool App::initWebGPU() {
 
     renderer.setupSurfaceConfig(mainWindow->getFramebufferSize().first, mainWindow->getFramebufferSize().second);
 
-    ResourceManager resourceManager;
-    wgpu::ShaderModule shader = resourceManager.loadShaderModule("shader.wgsl", renderer.getDevice());
+    wgpu::ShaderModule shader = ResourceManager::getInstance().loadShaderModule("shader.wgsl", renderer.getDevice());
 
     renderer.initBuffers();
     renderer.initBindGroups();
@@ -132,8 +131,7 @@ void App::renderFrame()
         std::string path = uiLayer.buildStartupUI();
         if (!path.empty()) {
             appState = AppState::Viewing;
-            ResourceManager resourceManager;
-            renderer.updateMeshBuffers(resourceManager.loadObj(path));
+            renderer.updateMeshBuffers(ResourceManager::getInstance().loadObj(path));
         }
         renderer.drawJustUI(uiLayer);
         break;
@@ -144,8 +142,7 @@ void App::renderFrame()
 
         std::string path = uiLayer.buildUI();
         if (!path.empty()) {
-            ResourceManager resourceManager;
-            renderer.updateMeshBuffers(resourceManager.loadObj(path));
+            renderer.updateMeshBuffers(ResourceManager::getInstance().loadObj(path));
         }
         renderer.draw(uiLayer, camera);
         break;
