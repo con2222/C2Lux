@@ -51,7 +51,10 @@ private:
     void setDefault(wgpu::BindGroupLayoutEntry &bindingLayout); 
     
     wgpu::Buffer vertexBuffer;
+    unsigned int vertexBufferSize = 1024;
+
     wgpu::Buffer indexBuffer;
+    unsigned int indexBufferSize = 1024;
     uint32_t indexCount;
     
     wgpu::Buffer uniformBuffer;

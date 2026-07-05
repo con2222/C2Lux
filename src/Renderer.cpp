@@ -507,27 +507,43 @@ void Renderer::resizeSwapchain(int width, int height) {
 }
 
 void Renderer::updateMeshBuffers(const Mesh& model) {
-    if (vertexBuffer) vertexBuffer.Destroy();
-    if (indexBuffer) indexBuffer.Destroy();
+    if (!vertexBuffer || model.getVertexData().size() >= vertexBufferSize) {
+        if (model.getVertexData().size() >= vertexBufferSize) {
+            vertexBufferSize = model.getVertexData().size() * 1.5;
+        }
+        if (vertexBuffer) {
+            vertexBuffer.Destroy();
+        }
 
-    wgpu::BufferDescriptor bufferDesc{};
-    bufferDesc.nextInChain = nullptr;
-    bufferDesc.size = model.getVertexData().size() * sizeof(VertexAttributes);
-    bufferDesc.label = "Vertex buffer";
-    bufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex;
-    bufferDesc.mappedAtCreation = false;
-    vertexBuffer = device.CreateBuffer(&bufferDesc);
-    queue.WriteBuffer(vertexBuffer, 0, model.getVertexData().data(), bufferDesc.size);
+        wgpu::BufferDescriptor bufferDesc{};
+        bufferDesc.nextInChain = nullptr;
+        bufferDesc.size = vertexBufferSize * sizeof(VertexAttributes);
+        bufferDesc.label = "Vertex buffer";
+        bufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex;
+        bufferDesc.mappedAtCreation = false;
+        vertexBuffer = device.CreateBuffer(&bufferDesc);
+    }
 
-    wgpu::BufferDescriptor indexBufferDesc{};
-    indexBufferDesc.nextInChain = nullptr;
-    indexBufferDesc.size = model.getIndexData().size() * sizeof(uint32_t);
-    indexBufferDesc.label = "Index buffer";
-    indexBufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Index;
-    indexBufferDesc.mappedAtCreation = false;
-    indexBuffer = device.CreateBuffer(&indexBufferDesc);
-    queue.WriteBuffer(indexBuffer, 0, model.getIndexData().data(), indexBufferDesc.size);
+    if (!indexBuffer || model.getIndexData().size() >= indexBufferSize) {
+        if (model.getIndexData().size() >= indexBufferSize) {
+            indexBufferSize = model.getIndexData().size() * 1.5;
+        }
+        if (indexBuffer) {
+            indexBuffer.Destroy();
+        }
 
+        wgpu::BufferDescriptor indexBufferDesc{};
+        indexBufferDesc.nextInChain = nullptr;
+        indexBufferDesc.size = indexBufferSize * sizeof(uint32_t); // default indexBufferSize
+        indexBufferDesc.label = "Index buffer";
+        indexBufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Index;
+        indexBufferDesc.mappedAtCreation = false;
+        indexBuffer = device.CreateBuffer(&indexBufferDesc);
+    }
+
+    queue.WriteBuffer(vertexBuffer, 0, model.getVertexData().data(), model.getVertexData().size() * sizeof(VertexAttributes));
+
+    queue.WriteBuffer(indexBuffer, 0, model.getIndexData().data(), model.getIndexData().size() * sizeof(uint32_t));
     indexCount = static_cast<uint32_t>(model.getIndexData().size());
 }
 

@@ -21,6 +21,8 @@ namespace C2Lux {
 
 ResourceManager::ResourceManager(std::filesystem::path sPath, std::filesystem::path oPath) : shaderPath(sPath), objPath(oPath) {}
 
+
+/*
 wgpu::ShaderModule ResourceManager::loadShaderModule(std::string_view shaderName, wgpu::Device device) {
     shaderPath /= shaderName;
      std::ifstream file(shaderPath);
@@ -46,6 +48,36 @@ wgpu::ShaderModule ResourceManager::loadShaderModule(std::string_view shaderName
     shaderDesc.nextInChain = &wgslDesc;
 
     
+
+    return device.CreateShaderModule(&shaderDesc);
+} */
+
+wgpu::ShaderModule ResourceManager::loadShaderModule(std::string_view shaderName, wgpu::Device device) {
+    std::filesystem::path currentPath = std::filesystem::current_path();
+
+    shaderPath = currentPath / "shaders" / shaderName;
+
+    std::ifstream file(shaderPath);
+
+    if (!file.is_open()) {
+        std::cerr << "Error: Can't open shader code file at: " << shaderPath.string() << std::endl;
+        return nullptr;
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string shaderCode = buffer.str();
+
+    if (shaderCode.empty()) {
+        std::cerr << "Shader's code is empty" << std::endl;
+        return nullptr;
+    }
+
+    wgpu::ShaderModuleWGSLDescriptor wgslDesc{};
+    wgslDesc.code = shaderCode.c_str();
+
+    wgpu::ShaderModuleDescriptor shaderDesc{};
+    shaderDesc.nextInChain = &wgslDesc;
 
     return device.CreateShaderModule(&shaderDesc);
 }

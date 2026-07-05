@@ -138,6 +138,7 @@ void App::renderFrame()
         renderer.drawJustUI(uiLayer);
         break;
     }
+
     case AppState::Viewing: {
         processInput(deltaTime);
 

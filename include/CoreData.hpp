@@ -2,7 +2,7 @@
 
 #include "glm/glm.hpp"
 
-const float PI = 3.14159265358979323846;
+inline constexpr float PI = 3.14159265358979323846;
 
 struct Uniforms {
     glm::mat4 modelMatrix;
