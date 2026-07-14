@@ -8,7 +8,6 @@ The project is designed as an educational playground to experiment with real-tim
 
 > **Project Status: Early Development (v0.0.1-alpha)** > This project is currently an active work-in-progress. The architecture is evolving rapidly, and new features are being added frequently.
 
----
 
 ## Current Features
 
@@ -16,7 +15,6 @@ The project is designed as an educational playground to experiment with real-tim
 - **Custom Blinn-Phong Shading:** A pure WGSL implementation of the classical Blinn-Phong reflection model, combining ambient, diffuse, and specular components.
 - **Live Parameter Tuning:** Fully interactive control panel powered by **Dear ImGui** to tweak light direction, ambient occlusion factor, light intensity, material shininess, and specular strength in real time.
 
----
 
 ## Roadmap & Future Plans
 
@@ -48,7 +46,6 @@ The ultimate goal of **C2Lux** is to become a highly flexible environment for gr
 - **More 3D Formats:** Adding support for modern 3D model formats like `.gltf` and `.fbx` alongside `.obj`.
 - **Image Textures:** Implementing texture loading for common image formats (JPEG, PNG) to support rich material rendering and mapping.
 
----
 
 ## Tech Stack
 
@@ -59,7 +56,6 @@ The ultimate goal of **C2Lux** is to become a highly flexible environment for gr
 - **Math Library:** GLM (OpenGL Mathematics)
 - **Asset Loading:** tinyobjloader & stb_image
 
----
 
 ## Building the Project
 
