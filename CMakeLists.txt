@@ -1,7 +1,7 @@
-cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -25,18 +25,11 @@ if (WIN32)
 elseif (APPLE)
     message(STATUS "Configuring for macOS (Metal)")
 elseif (EMSCRIPTEN)
-    message(STATUS "Configuring for Web (WebGPU/WebGL)")
+    message(STATUS "Configuring for Web (emdawnwebgpu)")
 elseif (UNIX)
     message(STATUS "Configuring for Linux (X11 + Wayland)")
     set(DAWN_USE_WAYLAND ${USE_WAYLAND} CACHE BOOL "" FORCE)
     set(DAWN_USE_X11 ${USE_X11} CACHE BOOL "" FORCE)
-
-    if (USE_WAYLAND)
-        add_definitions(-D_GLFW_WAYLAND)
-    endif()
-    if (USE_X11)
-        add_definitions(-D_GLFW_X11)
-    endif()
 endif()
 
 set(GLFW_BUILD_WAYLAND ${USE_WAYLAND} CACHE BOOL "Enable Wayland for GLFW" FORCE)
@@ -52,10 +45,10 @@ FetchContent_Declare(nfd GIT_REPOSITORY https://github.com/btzy/nativefiledialog
 set(NFD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(nfd)
 
+add_subdirectory(vendor/webgpu)
 add_subdirectory(vendor/glfw3webgpu)
 add_subdirectory(vendor/glm)
 add_subdirectory(vendor/imgui)
-add_subdirectory(vendor/webgpu)
 
 set(SOURCES 
     src/main.cpp
@@ -75,6 +68,7 @@ if (DEV_MODE)
     target_compile_definitions(${APP_NAME} PRIVATE
         RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources"   
         SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+        FONT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fonts"
     )
 else ()
     # In release mode, we just load resources relatively to wherever the
@@ -82,15 +76,29 @@ else ()
     target_compile_definitions(${APP_NAME} PRIVATE
         RESOURCE_DIR="./resources"
         SHADER_DIR="./shaders"
+        FONT_DIR="./fonts"
     )
 endif()
 
-file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/fonts" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
+foreach(asset_dir IN ITEMS fonts shaders resources)
+    add_custom_command(TARGET ${APP_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/${asset_dir}"
+            "$<TARGET_FILE_DIR:${APP_NAME}>/${asset_dir}"
+        VERBATIM
+    )
+endforeach()
 
 target_include_directories(${APP_NAME} PRIVATE 
     include/
     vendor/
 )
+
+# WebGPU uses a [0, 1] clip-space depth range.
+target_compile_definitions(${APP_NAME} PRIVATE GLFW_INCLUDE_NONE GLM_FORCE_DEPTH_ZERO_TO_ONE)
+if(MSVC)
+    target_compile_options(${APP_NAME} PRIVATE /utf-8)
+endif()
 
 target_link_libraries(${APP_NAME} PRIVATE
     glfw

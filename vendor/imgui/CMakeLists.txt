@@ -1,29 +1,21 @@
-# Define an ImGui target that fits our use case
-add_library(imgui STATIC
-    # Among the different backends available, we are interested in connecting
-    # the GUI to GLFW andWebGPU:
-    backends/imgui_impl_wgpu.h
-    backends/imgui_impl_wgpu.cpp
-    backends/imgui_impl_glfw.h
-    backends/imgui_impl_glfw.cpp
-
-    # Bonus to add some C++ specific features (the core ImGUi is a C library)
-    misc/cpp/imgui_stdlib.h
-    misc/cpp/imgui_stdlib.cpp
-
-    # The core ImGui files
-    imconfig.h
-    imgui.h
-    imgui.cpp
-    imgui_draw.cpp
-    imgui_internal.h
-    imgui_tables.cpp
-    imgui_widgets.cpp
-    imstb_rectpack.h
-    imstb_textedit.h
-    imstb_truetype.h
-    imgui_demo.cpp
+# Fetch a matching core and WebGPU backend instead of patching the vendored 1.89.8.
+include(FetchContent)
+FetchContent_Declare(imgui_upstream
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG v1.93.0
+    GIT_SHALLOW TRUE
 )
+FetchContent_MakeAvailable(imgui_upstream)
 
-target_include_directories(imgui PUBLIC .)
+add_library(imgui STATIC
+    ${imgui_upstream_SOURCE_DIR}/imgui.cpp
+    ${imgui_upstream_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_upstream_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_upstream_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_upstream_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
+    ${imgui_upstream_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+    ${imgui_upstream_SOURCE_DIR}/backends/imgui_impl_wgpu.cpp
+)
+target_include_directories(imgui SYSTEM PUBLIC ${imgui_upstream_SOURCE_DIR})
+target_compile_definitions(imgui PRIVATE IMGUI_IMPL_WEBGPU_BACKEND_DAWN GLFW_INCLUDE_NONE)
 target_link_libraries(imgui PUBLIC webgpu glfw)

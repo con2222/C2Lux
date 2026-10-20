@@ -12,11 +12,19 @@ int main() {
         std::cerr << "Could not start app" << std::endl;
         return 1;
     }
-    app->initWebGPU();
+    if (!app->initWebGPU()) {
+        std::cerr << "Could not initialize WebGPU" << std::endl;
+        app.reset();
+        glfwTerminate();
+        return 1;
+    }
 
     while (app->isRunning()) {
         app->mainLoop();
     }
 
+    // Destroy the renderer, UI and window before shutting down GLFW.
+    app.reset();
+    glfwTerminate();
     return 0;
 }

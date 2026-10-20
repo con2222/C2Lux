@@ -7,20 +7,18 @@
 // std
 #include <iostream>
 #include <cmath>
+#include <chrono>
+#include <string_view>
+#include <thread>
 
 
 namespace C2Lux {
 
-Renderer::Renderer() : instance(nullptr), adapter(nullptr), device(nullptr), queue(nullptr), surface(nullptr) {}
+Renderer::Renderer() = default;
 
 
 bool Renderer::initInstance() {
-    const char* toggleName = "enable_immediate_error_handling";
-    wgpu::DawnTogglesDescriptor toggles{};
-    toggles.enabledToggles = &toggleName;
-    toggles.enabledToggleCount = 1;
     wgpu::InstanceDescriptor instanceDesc{};
-    instanceDesc.nextInChain = &toggles;
     instance = wgpu::CreateInstance(&instanceDesc);
     if (!instance) {
         std::cerr << "Could not intialize WebGPU!" << std::endl;
@@ -48,12 +46,16 @@ bool Renderer::initAdapter() {
     instance.RequestAdapter(
         &adapterOpts,
         wgpu::CallbackMode::AllowProcessEvents,
-        [this, &requestEnded](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter_, const char* message) {
+        [this, &requestEnded](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter_, wgpu::StringView message) {
             if (status == wgpu::RequestAdapterStatus::Success) {
                 adapter = adapter_;
+                wgpu::AdapterInfo info{};
+                if (adapter.GetInfo(&info) == wgpu::Status::Success) {
+                    std::cout << "WebGPU adapter: " << std::string_view(info.device) << std::endl;
+                }
             } else {
                 std::cerr << "Could not get WebGPU adapter: ";
-                if (message) std::cerr << message;
+                std::cerr << std::string_view(message);
                 std::cerr << std::endl;
             }
             requestEnded = true;
@@ -62,6 +64,7 @@ bool Renderer::initAdapter() {
 
     while (!requestEnded) {
         instance.ProcessEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     return adapter != nullptr;
@@ -76,26 +79,37 @@ bool Renderer::initDevice() {
     deviceDesc.defaultQueue.nextInChain = nullptr;
     deviceDesc.defaultQueue.label = "The default queue";
 
-    // TODO: Change to cpp-API
-    deviceDesc.deviceLostCallbackInfo.callback = [](WGPUDevice const * device, WGPUDeviceLostReason reason, char const* message, void* /* pUserData */) {
-        std::cerr << "Device lost: reason " << reason << " device: " << device;
-        if (message) std::cerr << " (" << message << ")";
-        std::cerr << std::endl;
-    };
-    wgpu::RequiredLimits requiredLimits = getRequiredLimits();
-    deviceDesc.requiredLimits = &requiredLimits;
-    
+    // Register callbacks on the descriptor before requesting the device.
+    deviceDesc.SetDeviceLostCallback(
+        wgpu::CallbackMode::AllowProcessEvents,
+        [this](const wgpu::Device&, wgpu::DeviceLostReason reason, wgpu::StringView message) {
+            if (reason == wgpu::DeviceLostReason::Destroyed ||
+                reason == wgpu::DeviceLostReason::CallbackCancelled) return;
+            failed = true;
+            std::cerr << "Device lost (" << static_cast<uint32_t>(reason) << "): "
+                      << std::string_view(message) << std::endl;
+        }
+    );
+    deviceDesc.SetUncapturedErrorCallback(
+        [](const wgpu::Device&, wgpu::ErrorType type, wgpu::StringView message) {
+            std::cerr << "WebGPU error (" << static_cast<uint32_t>(type) << "): "
+                      << std::string_view(message) << std::endl;
+        }
+    );
+    // WebGPU's default limits cover the current viewer. Do not cap meshes at
+    // 150 KB or render targets at 2048 pixels as the old manual limits did.
+
     bool requestEnded = false;
 
     adapter.RequestDevice(
         &deviceDesc,
         wgpu::CallbackMode::AllowProcessEvents,
-        [this, &requestEnded](wgpu::RequestDeviceStatus status, wgpu::Device device_, char const* message) {
+        [this, &requestEnded](wgpu::RequestDeviceStatus status, wgpu::Device device_, wgpu::StringView message) {
             if (status == wgpu::RequestDeviceStatus::Success) {
                 device = device_;
             } else {
                 std::cerr << "Could not get WebGPU device: ";
-                if (message) std::cerr << message;
+                std::cerr << std::string_view(message);
                 std::cerr << std::endl;
             }
             requestEnded = true;
@@ -104,17 +118,8 @@ bool Renderer::initDevice() {
 
     while (!requestEnded) {
         instance.ProcessEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-
-    // TODO: Change to cpp-API
-    device.SetUncapturedErrorCallback(
-        [](WGPUErrorType type, char const* message, void*) {
-            std::cerr << "Uncaptured device error: type" << static_cast<uint32_t>(type);
-            if (message) std::cerr << " (" << message << ")";
-            std::cerr << std::endl;
-        },
-        nullptr
-    );
 
     return device != nullptr;
 }
@@ -122,13 +127,6 @@ bool Renderer::initDevice() {
 bool Renderer::initQueue() {
     queue = device.GetQueue();
     
-    queue.OnSubmittedWorkDone(
-        wgpu::CallbackMode::AllowProcessEvents,
-        [](wgpu::QueueWorkDoneStatus status) {
-            std::cout << "Queued work finished with status: " << static_cast<uint32_t>(status) << std::endl;
-        }
-    );
-
     return queue != nullptr;
 }
 
@@ -137,7 +135,6 @@ void Renderer::initBindGroups() {
     
     // Uniforms
     wgpu::BindGroupLayoutEntry& uniformBindingLayout = bindingLayoutEntries[0];
-    setDefault(uniformBindingLayout);
     uniformBindingLayout.binding = 0;
     uniformBindingLayout.visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment;
     uniformBindingLayout.buffer.type = wgpu::BufferBindingType::Uniform;
@@ -197,7 +194,8 @@ void Renderer::initBindGroups() {
     bindGroups.push_back(device.CreateBindGroup(&bindGroupDescriptor));
 }
 
-void Renderer::setupSurfaceConfig(int width, int height) {
+bool Renderer::setupSurfaceConfig(int width, int height) {
+    if (width <= 0 || height <= 0) return false;
     surfaceConfig.nextInChain = nullptr;
     surfaceConfig.device = device;
     surfaceConfig.usage = wgpu::TextureUsage::RenderAttachment;
@@ -205,125 +203,35 @@ void Renderer::setupSurfaceConfig(int width, int height) {
     surfaceConfig.viewFormatCount = 0;
     surfaceConfig.viewFormats = nullptr;
     
-    wgpu::SurfaceCapabilities capabilities;
-    surface.GetCapabilities(adapter, &capabilities);
-    if (capabilities.formatCount > 0) {
-        surfaceConfig.format = capabilities.formats[0];
-    } else {
-        surfaceConfig.format = wgpu::TextureFormat::BGRA8Unorm;
+    wgpu::SurfaceCapabilities capabilities{};
+    if (surface.GetCapabilities(adapter, &capabilities) != wgpu::Status::Success ||
+        capabilities.formatCount == 0 || capabilities.alphaModeCount == 0) {
+        std::cerr << "Could not query surface capabilities." << std::endl;
+        return false;
     }
-    if (capabilities.alphaModeCount > 0) {
-        surfaceConfig.alphaMode = capabilities.alphaModes[0];
-    } else {
-        surfaceConfig.alphaMode = wgpu::CompositeAlphaMode::Auto;
-    }
+    surfaceConfig.format = capabilities.formats[0];
+    surfaceConfig.alphaMode = capabilities.alphaModes[0];
     surfaceFormat = surfaceConfig.format;
-    surfaceConfig.width = width;
-    surfaceConfig.height = height;
+    surfaceConfig.width = static_cast<uint32_t>(width);
+    surfaceConfig.height = static_cast<uint32_t>(height);
     surface.Configure(&surfaceConfig);
-}
-
-wgpu::RequiredLimits Renderer::getRequiredLimits() const {
-    wgpu::SupportedLimits supportedLimits;
-    supportedLimits.nextInChain = nullptr;
-    adapter.GetLimits(&supportedLimits);
-    
-    wgpu::RequiredLimits requiredLimits = {};
-    setDefault(requiredLimits.limits);
-
-    requiredLimits.limits.maxVertexAttributes = 4;
-    requiredLimits.limits.maxVertexBuffers = 3;
-    requiredLimits.limits.maxBufferSize = 150000;
-    requiredLimits.limits.maxBindGroups = 2;
-    requiredLimits.limits.maxUniformBuffersPerShaderStage = 2;
-    requiredLimits.limits.maxUniformBufferBindingSize = 2048;
-    requiredLimits.limits.maxVertexBufferArrayStride = 20;
-    requiredLimits.limits.minUniformBufferOffsetAlignment = supportedLimits.limits.minUniformBufferOffsetAlignment;
-    requiredLimits.limits.minStorageBufferOffsetAlignment = supportedLimits.limits.minStorageBufferOffsetAlignment;
-    requiredLimits.limits.maxInterStageShaderComponents = 16;
-    requiredLimits.limits.maxTextureDimension1D = supportedLimits.limits.maxTextureDimension1D;
-    requiredLimits.limits.maxTextureDimension2D = supportedLimits.limits.maxTextureDimension2D;
-    requiredLimits.limits.maxTextureArrayLayers = 1;
-    requiredLimits.limits.maxSampledTexturesPerShaderStage = 1;
-    requiredLimits.limits.maxSamplersPerShaderStage = 1;
-
-    // Allow textures up to 2K
-    requiredLimits.limits.maxTextureDimension1D = 2048;
-    requiredLimits.limits.maxTextureDimension2D = 2048;
-
-    return requiredLimits;
-}
-
-void Renderer::setDefault(wgpu::Limits& limits) const {
-    limits.maxTextureDimension1D = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxTextureDimension2D = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxTextureDimension3D = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxTextureArrayLayers = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxBindGroups = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxBindGroupsPlusVertexBuffers = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxBindingsPerBindGroup = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxDynamicUniformBuffersPerPipelineLayout = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxDynamicStorageBuffersPerPipelineLayout = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxSampledTexturesPerShaderStage = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxSamplersPerShaderStage = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxStorageBuffersPerShaderStage = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxStorageTexturesPerShaderStage = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxUniformBuffersPerShaderStage = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxUniformBufferBindingSize = WGPU_LIMIT_U64_UNDEFINED;
-	limits.maxStorageBufferBindingSize = WGPU_LIMIT_U64_UNDEFINED;
-	limits.minUniformBufferOffsetAlignment = WGPU_LIMIT_U32_UNDEFINED;
-	limits.minStorageBufferOffsetAlignment = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxVertexBuffers = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxBufferSize = WGPU_LIMIT_U64_UNDEFINED;
-	limits.maxVertexAttributes = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxVertexBufferArrayStride = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxInterStageShaderComponents = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxInterStageShaderVariables = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxColorAttachments = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxColorAttachmentBytesPerSample = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxComputeWorkgroupStorageSize = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxComputeInvocationsPerWorkgroup = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxComputeWorkgroupSizeX = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxComputeWorkgroupSizeY = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxComputeWorkgroupSizeZ = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxComputeWorkgroupsPerDimension = WGPU_LIMIT_U32_UNDEFINED;
-}
-
-void Renderer::setDefault(wgpu::BindGroupLayoutEntry &bindingLayout) {
-    bindingLayout.buffer.nextInChain = nullptr;
-    bindingLayout.buffer.type = wgpu::BufferBindingType::Undefined;
-    bindingLayout.buffer.hasDynamicOffset = false;
-
-    bindingLayout.sampler.nextInChain = nullptr;
-    bindingLayout.sampler.type = wgpu::SamplerBindingType::Undefined;
-
-    bindingLayout.storageTexture.nextInChain = nullptr;
-    bindingLayout.storageTexture.access = wgpu::StorageTextureAccess::Undefined;
-    bindingLayout.storageTexture.format = wgpu::TextureFormat::Undefined;
-    bindingLayout.storageTexture.viewDimension = wgpu::TextureViewDimension::Undefined;
-
-    bindingLayout.texture.nextInChain = nullptr;
-    bindingLayout.texture.multisampled = false;
-    bindingLayout.texture.sampleType = wgpu::TextureSampleType::Undefined;
-    bindingLayout.texture.viewDimension = wgpu::TextureViewDimension::Undefined;
+    return true;
 }
 
 void Renderer::draw(UILayer& ui, const Camera& camera) {
     
-    device.Tick();
 
-    Uniforms uniforms;
-    uniforms.time = glfwGetTime();
+    Uniforms uniforms{};
+    uniforms.time = static_cast<float>(glfwGetTime());
     uniforms.modelMatrix = glm::mat4(1.0f);
     uniforms.viewMatrix = camera.getViewMatrix();
-    camera.debug();
     float aspect = static_cast<float>(surfaceConfig.width) / static_cast<float>(surfaceConfig.height);
     uniforms.projectionMatrix = camera.getProjectionMatrix(aspect);
     uniforms.cameraPosition = camera.getPosition();
     uniforms.color = { ui.modelColor.x, ui.modelColor.y, ui.modelColor.z, ui.modelColor.w };
 
 
-    LightData lightData;
+    LightData lightData{};
     lightData.direction = { ui.lightDirection[0], ui.lightDirection[1], ui.lightDirection[2] };
     lightData.ambient = ui.ambientOcclusion;
     lightData.intensity = ui.intensity;
@@ -335,7 +243,7 @@ void Renderer::draw(UILayer& ui, const Camera& camera) {
 
     wgpu::TextureView targetView = getNextSurfaceViewData();
     if (!targetView) {
-        std::cout << "Can't get texture!" << std::endl;
+        ui.endFrame();
         return;
     }
 
@@ -343,11 +251,6 @@ void Renderer::draw(UILayer& ui, const Camera& camera) {
     encoderDesc.nextInChain = nullptr;
     encoderDesc.label = "Command encoder";
     wgpu::CommandEncoder encoder = device.CreateCommandEncoder(&encoderDesc);
-
-    wgpu::RenderPassDescriptor renderPassDesc = {};
-    renderPassDesc.nextInChain = nullptr;
-    renderPassDesc.depthStencilAttachment = nullptr;
-    renderPassDesc.timestampWrites = nullptr;
 
     wgpu::RenderPassColorAttachment colorAttachment = {};
     colorAttachment.view = msaaTextureView;
@@ -374,11 +277,14 @@ void Renderer::draw(UILayer& ui, const Camera& camera) {
 
     wgpu::RenderPassEncoder pass1 = encoder.BeginRenderPass(&pass1Desc);
     pass1.SetPipeline(renderPipeline);
-    pass1.SetVertexBuffer(0, vertexBuffer);
-    pass1.SetIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint32, 0, indexCount * sizeof(uint32_t));
-    pass1.SetBindGroup(0, bindGroups[0], 0, nullptr);
-    pass1.SetBindGroup(1, bindGroups[1], 0, nullptr);
-    pass1.DrawIndexed(indexCount, 1, 0, 0, 0);
+    if (indexCount > 0 && vertexBuffer && indexBuffer) {
+        pass1.SetVertexBuffer(0, vertexBuffer);
+        pass1.SetIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint32, 0,
+                             static_cast<uint64_t>(indexCount) * sizeof(uint32_t));
+        pass1.SetBindGroup(0, bindGroups[0]);
+        pass1.SetBindGroup(1, bindGroups[1]);
+        pass1.DrawIndexed(indexCount);
+    }
     pass1.End();
 
     /* Render imGui UI */
@@ -415,10 +321,9 @@ void Renderer::draw(UILayer& ui, const Camera& camera) {
 
 void Renderer::drawJustUI(UILayer& ui)
 {
-    device.Tick();
     wgpu::TextureView targetView = getNextSurfaceViewData();
     if (!targetView) {
-        std::cout << "Can't get texture!" << std::endl;
+        ui.endFrame();
         return;
     }
     
@@ -459,12 +364,27 @@ void Renderer::drawJustUI(UILayer& ui)
 }
 
 wgpu::TextureView Renderer::getNextSurfaceViewData() {
-    wgpu::SurfaceTexture surfaceTexture;
+    wgpu::SurfaceTexture surfaceTexture{};
     surface.GetCurrentTexture(&surfaceTexture);
 
-    if (surfaceTexture.status != wgpu::SurfaceGetCurrentTextureStatus::Success) {
+    switch (surfaceTexture.status) {
+    case wgpu::SurfaceGetCurrentTextureStatus::SuccessOptimal:
+    case wgpu::SurfaceGetCurrentTextureStatus::SuccessSuboptimal:
+        break;
+    case wgpu::SurfaceGetCurrentTextureStatus::Timeout:
+        return nullptr; // A temporary failure: skip this frame.
+    case wgpu::SurfaceGetCurrentTextureStatus::Outdated:
+    case wgpu::SurfaceGetCurrentTextureStatus::Lost:
+        // Reconfigure before acquiring a texture on the next frame.
+        surface.Configure(&surfaceConfig);
+        return nullptr;
+    default:
+        failed = true;
+        std::cerr << "Could not acquire surface texture (status "
+                  << static_cast<uint32_t>(surfaceTexture.status) << ")." << std::endl;
         return nullptr;
     }
+    if (!surfaceTexture.texture) return nullptr;
 
     wgpu::TextureViewDescriptor viewDescriptor;
     viewDescriptor.nextInChain = nullptr;
@@ -509,7 +429,7 @@ void Renderer::resizeSwapchain(int width, int height) {
 void Renderer::updateMeshBuffers(const Mesh& model) {
     if (!vertexBuffer || model.getVertexData().size() >= vertexBufferSize) {
         if (model.getVertexData().size() >= vertexBufferSize) {
-            vertexBufferSize = model.getVertexData().size() * 1.5;
+            vertexBufferSize = model.getVertexData().size() + model.getVertexData().size() / 2;
         }
         if (vertexBuffer) {
             vertexBuffer.Destroy();
@@ -526,7 +446,7 @@ void Renderer::updateMeshBuffers(const Mesh& model) {
 
     if (!indexBuffer || model.getIndexData().size() >= indexBufferSize) {
         if (model.getIndexData().size() >= indexBufferSize) {
-            indexBufferSize = model.getIndexData().size() * 1.5;
+            indexBufferSize = model.getIndexData().size() + model.getIndexData().size() / 2;
         }
         if (indexBuffer) {
             indexBuffer.Destroy();
@@ -567,20 +487,22 @@ void Renderer::initBuffers() {
 
 void Renderer::initRenderPipeline(wgpu::ShaderModule shader) {
 
-    // NOTE: Request compile log from driver(Deprecated)
-    shader.GetCompilationInfo([](WGPUCompilationInfoRequestStatus status, WGPUCompilationInfo const* compilationInfo, void* userdata) {
-        if (compilationInfo->messageCount > 0) {
-            std::cout << "--- WGSL Compilation Info ---" << std::endl;
-            for (uint32_t i = 0; i < compilationInfo->messageCount; ++i) {
-                const auto& msg = compilationInfo->messages[i];
-                std::cout << "Line " << msg.lineNum << ":" << msg.linePos 
-                          << " - " << msg.message << std::endl;
+    shader.GetCompilationInfo(wgpu::CallbackMode::AllowProcessEvents,
+        [](wgpu::CompilationInfoRequestStatus status, const wgpu::CompilationInfo* compilationInfo) {
+            if (status != wgpu::CompilationInfoRequestStatus::Success || !compilationInfo) {
+                std::cerr << "Could not retrieve WGSL compilation info." << std::endl;
+                return;
             }
-            std::cout << "-----------------------------" << std::endl;
-        }
-    }, nullptr);
-
-    // WARN: Add error if shaderModule == nullptr
+            if (compilationInfo->messageCount > 0) {
+                std::cout << "--- WGSL Compilation Info ---" << std::endl;
+                for (size_t i = 0; i < compilationInfo->messageCount; ++i) {
+                    const auto& msg = compilationInfo->messages[i];
+                    std::cout << "Line " << msg.lineNum << ":" << msg.linePos
+                              << " - " << std::string_view(msg.message) << std::endl;
+                }
+                std::cout << "-----------------------------" << std::endl;
+            }
+        });
 
     wgpu::RenderPipelineDescriptor pipelineDesc{};
     pipelineDesc.nextInChain = nullptr;
@@ -648,7 +570,6 @@ void Renderer::initRenderPipeline(wgpu::ShaderModule shader) {
     pipelineDesc.fragment = &fragmentState;
 
     wgpu::DepthStencilState depthStencilState{};
-    setDefault(depthStencilState);
     depthStencilState.depthCompare = wgpu::CompareFunction::Less; // compare two z-buffer values
     depthStencilState.depthWriteEnabled = true; // overwrite value = a if a less than b. Can deactivate when rendering user interface for example
     depthTextureFormat = wgpu::TextureFormat::Depth24Plus;
@@ -685,26 +606,6 @@ void Renderer::initRenderPipeline(wgpu::ShaderModule shader) {
     pipelineDesc.multisample.alphaToCoverageEnabled = false;
 
     renderPipeline = device.CreateRenderPipeline(&pipelineDesc);
-}
-
-void Renderer::setDefault(wgpu::DepthStencilState& depthStencilState) {
-    depthStencilState.format = wgpu::TextureFormat::Undefined;
-    depthStencilState.depthWriteEnabled = false;
-    depthStencilState.depthCompare = wgpu::CompareFunction::Always;
-    depthStencilState.stencilReadMask = 0xFFFFFFFF;
-    depthStencilState.stencilWriteMask = 0xFFFFFFFF;
-    depthStencilState.depthBias = 0;
-    depthStencilState.depthBiasSlopeScale = 0;
-    depthStencilState.depthBiasClamp = 0;
-    setDefault(depthStencilState.stencilFront);
-    setDefault(depthStencilState.stencilBack);
-}
-
-void Renderer::setDefault(wgpu::StencilFaceState& stencilFaceState) {    
-    stencilFaceState.compare = wgpu::CompareFunction::Always;
-    stencilFaceState.depthFailOp = wgpu::StencilOperation::Keep;
-    stencilFaceState.failOp = wgpu::StencilOperation::Keep;
-    stencilFaceState.passOp = wgpu::StencilOperation::Keep;
 }
 
 void Renderer::initSampler() {

@@ -19,6 +19,7 @@ public:
     void destroy();
 
     void beginFrame();
+    void endFrame();
 
     std::string buildUI();
     std::string buildStartupUI();
@@ -43,6 +44,10 @@ public:
     bool fullScreenFlag = false;
 
 private:
+    bool nfdInitialized = false;
+    bool glfwInitialized = false;
+    bool webgpuInitialized = false;
+
     unsigned int fontSize = 16.f;
     float currentScale = 2.1f;
     bool bNeedsRebuild = false;

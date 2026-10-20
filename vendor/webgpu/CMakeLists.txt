@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.0...3.24 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
 project(webgpu-backend-dawn VERSION 1.0.0)
 
 message(STATUS "Using Dawn backend for WebGPU")
@@ -7,26 +7,18 @@ add_library(webgpu INTERFACE)
 
 if (EMSCRIPTEN)
 
-	target_include_directories(webgpu INTERFACE
-		"${CMAKE_CURRENT_SOURCE_DIR}/include-emscripten"
-	)
-
 	# This is used to advertise the flavor of WebGPU that this zip provides
 	target_compile_definitions(webgpu INTERFACE WEBGPU_BACKEND_EMSCRIPTEN)
 
-	target_link_options(webgpu INTERFACE
-		-sUSE_WEBGPU # Handle WebGPU symbols
-	)
+	# Emscripten 4.0.10+ provides Dawn's current C and C++ headers through this port.
+	target_compile_options(webgpu INTERFACE --use-port=emdawnwebgpu)
+	target_link_options(webgpu INTERFACE --use-port=emdawnwebgpu)
 
 else (EMSCRIPTEN)
 
 	include(cmake/FetchDawn.cmake)
 
 	target_link_libraries(webgpu INTERFACE webgpu_dawn)
-	target_include_directories(webgpu INTERFACE
-		"${CMAKE_CURRENT_SOURCE_DIR}/include"
-		"${CMAKE_BINARY_DIR}/_deps/dawn-src/include"
-	)
 
 	# This is used to advertise the flavor of WebGPU that this zip provides
 	target_compile_definitions(webgpu INTERFACE WEBGPU_BACKEND_DAWN)

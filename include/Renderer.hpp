@@ -13,6 +13,11 @@ class UILayer;
 class Renderer {
 public:
     Renderer();
+    // Persistent device callbacks refer to this renderer's address.
+    Renderer(const Renderer&) = delete;
+    Renderer& operator=(const Renderer&) = delete;
+    Renderer(Renderer&&) = delete;
+    Renderer& operator=(Renderer&&) = delete;
 
     bool initInstance();
     bool initAdapter();
@@ -25,7 +30,7 @@ public:
     void initBindGroups();
 
     bool setSurface(WGPUSurface c_surface);
-    void setupSurfaceConfig(int width, int height);
+    bool setupSurfaceConfig(int width, int height);
     void resizeSwapchain(int width, int height);
 
     void updateMeshBuffers(const Mesh& model);
@@ -44,18 +49,14 @@ private:
     wgpu::Surface surface;
     wgpu::TextureFormat surfaceFormat;
 
-    wgpu::RequiredLimits getRequiredLimits() const;
-    void setDefault(wgpu::Limits& limits) const;
-    void setDefault(wgpu::DepthStencilState& depthStencilState);
-    void setDefault(wgpu::StencilFaceState& stencilFaceState);
-    void setDefault(wgpu::BindGroupLayoutEntry &bindingLayout); 
-    
+    bool failed = false;
+
     wgpu::Buffer vertexBuffer;
-    unsigned int vertexBufferSize = 1024;
+    size_t vertexBufferSize = 1024;
 
     wgpu::Buffer indexBuffer;
-    unsigned int indexBufferSize = 1024;
-    uint32_t indexCount;
+    size_t indexBufferSize = 1024;
+    uint32_t indexCount = 0;
     
     wgpu::Buffer uniformBuffer;
     wgpu::Buffer lightBuffer;
@@ -82,7 +83,11 @@ public:
     const wgpu::Device& getDevice() const { return device; }
     wgpu::TextureFormat getSurfaceFormat() const { return surfaceFormat; }
 
-    wgpu::SurfaceConfiguration surfaceConfig;
+    // Process asynchronous callbacks even when the window is minimized.
+    void processEvents() { if (instance) instance.ProcessEvents(); }
+    bool hasFailed() const { return failed; }
+
+    wgpu::SurfaceConfiguration surfaceConfig{};
 
 };
 

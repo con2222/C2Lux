@@ -20,14 +20,17 @@ bool UILayer::init(GLFWwindow* window, wgpu::Device device, wgpu::TextureFormat 
 {
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
-	bool success = (NFD_Init() == NFD_OKAY) && ImGui_ImplGlfw_InitForOther(window, true) &&
-					ImGui_ImplWGPU_Init(
-						device.Get(),
-						3,
-						static_cast<WGPUTextureFormat>(targetFormat),
-						WGPUTextureFormat_Undefined
-					);
-	if (!success) return false;
+	nfdInitialized = NFD_Init() == NFD_OKAY;
+	if (!nfdInitialized) { destroy(); return false; }
+	glfwInitialized = ImGui_ImplGlfw_InitForOther(window, true);
+	if (!glfwInitialized) { destroy(); return false; }
+
+	ImGui_ImplWGPU_InitInfo initInfo{};
+	initInfo.Device = device.Get();
+	initInfo.NumFramesInFlight = 3;
+	initInfo.RenderTargetFormat = static_cast<WGPUTextureFormat>(targetFormat);
+	webgpuInitialized = ImGui_ImplWGPU_Init(&initInfo);
+	if (!webgpuInitialized) { destroy(); return false; }
 
 	ImGuiIO& io = ImGui::GetIO();
 	ImGui::StyleColorsDark(); // TODO: Customize theme
@@ -38,7 +41,8 @@ bool UILayer::init(GLFWwindow* window, wgpu::Device device, wgpu::TextureFormat 
 
 	float perfectFontSize = fontSize * currentScale;
 
-	ImFont* font = io.Fonts->AddFontFromFileTTF("fonts/Roboto-Black.ttf", perfectFontSize);
+	const std::string fontPath = std::string(FONT_DIR) + "/Roboto-Black.ttf";
+	ImFont* font = io.Fonts->AddFontFromFileTTF(fontPath.c_str(), perfectFontSize);
 	if (font == nullptr) {
 		std::cerr << "Can't load user's font. Use standard font" << std::endl;
 		io.Fonts->AddFontDefault();
@@ -53,11 +57,14 @@ bool UILayer::init(GLFWwindow* window, wgpu::Device device, wgpu::TextureFormat 
 void UILayer::destroy()
 {
 	if (ImGui::GetCurrentContext()) {
-		ImGui_ImplWGPU_Shutdown();
-		ImGui_ImplGlfw_Shutdown();
+		if (webgpuInitialized) ImGui_ImplWGPU_Shutdown();
+		if (glfwInitialized) ImGui_ImplGlfw_Shutdown();
 		ImGui::DestroyContext();
 	}
-	NFD_Quit();
+	webgpuInitialized = false;
+	glfwInitialized = false;
+	if (nfdInitialized) NFD_Quit();
+	nfdInitialized = false;
 }
 
 void UILayer::beginFrame()
@@ -65,6 +72,11 @@ void UILayer::beginFrame()
 	ImGui_ImplWGPU_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
+}
+
+void UILayer::endFrame()
+{
+	ImGui::EndFrame();
 }
 
 std::string UILayer::buildUI()
@@ -216,7 +228,8 @@ void UILayer::rebuildFontsAndScale()
 
 	float perfectFontSize = fontSize * currentScale;
 
-	ImFont* font = io.Fonts->AddFontFromFileTTF("fonts/Roboto-Black.ttf", perfectFontSize);
+	const std::string fontPath = std::string(FONT_DIR) + "/Roboto-Black.ttf";
+	ImFont* font = io.Fonts->AddFontFromFileTTF(fontPath.c_str(), perfectFontSize);
 	if (font == nullptr) {
 		io.Fonts->AddFontDefault();
 	}

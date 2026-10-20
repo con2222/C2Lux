@@ -2,7 +2,7 @@
 
 # C2Lux
 
-**C2Lux** is a lightweight, cross-platform 3D graphics sandbox and interactive shader laboratory built from scratch using **C++17** and **WebGPU (Google Dawn)**. 
+**C2Lux** is a lightweight, cross-platform 3D graphics sandbox and interactive shader laboratory built from scratch using **C++20** and **WebGPU (Google Dawn)**.
 
 The project is designed as an educational playground to experiment with real-time lighting algorithms, custom shader architectures, and modern low-level graphics techniques.
 
@@ -49,7 +49,7 @@ The ultimate goal of **C2Lux** is to become a highly flexible environment for gr
 
 ## Tech Stack
 
-- **Core:** C++17
+- **Core:** C++20
 - **Graphics API:** WebGPU via Google's Dawn framework
 - **Windowing & Input:** GLFW
 - **GUI:** Dear ImGui
@@ -57,11 +57,13 @@ The ultimate goal of **C2Lux** is to become a highly flexible environment for gr
 - **Asset Loading:** tinyobjloader & stb_image
 
 
+See [modernization notes and graphics learning roadmap (Russian)](MODERNIZATION.ru.md) for dependency versions, API changes, and implementation exercises.
+
 ## Building the Project
 
 ### Prerequisites
-- A compiler supporting C++17
-- CMake 3.20 or higher
+- A compiler supporting C++20
+- CMake 3.22 or higher
 - A compatible GPU supporting Vulkan, DirectX 12, or Metal
 
 ### Compilation

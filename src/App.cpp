@@ -25,7 +25,6 @@ namespace C2Lux {
     
 App::~App() {
     uiLayer.destroy();
-    glfwTerminate();
 }
 
 App::App(std::unique_ptr<Window> window) : mainWindow(std::move(window)), appState(AppState::Startup), bisRunning(true) {}
@@ -37,9 +36,11 @@ bool App::initWebGPU() {
     if (!renderer.initDevice()) return false;
     if (!renderer.initQueue()) return false;
 
-    renderer.setupSurfaceConfig(mainWindow->getFramebufferSize().first, mainWindow->getFramebufferSize().second);
+    const auto [width, height] = mainWindow->getFramebufferSize();
+    if (!renderer.setupSurfaceConfig(width, height)) return false;
 
     wgpu::ShaderModule shader = ResourceManager::getInstance().loadShaderModule("shader.wgsl", renderer.getDevice());
+    if (!shader) return false;
 
     renderer.initBuffers();
     renderer.initBindGroups();
@@ -158,14 +159,22 @@ std::unique_ptr<App> App::create() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
-    return std::unique_ptr<App>(new App(Window::create(1920, 1080, "Main window")));
+    auto window = Window::create(1920, 1080, "Main window");
+    if (!window) {
+        std::cerr << "Could not create the main window!" << std::endl;
+        glfwTerminate();
+        return nullptr;
+    }
+    return std::make_unique<App>(std::move(window));
 }
 
 bool App::isRunning() {
-    return !(!bisRunning || mainWindow->shouldClose());
+    return bisRunning && !renderer.hasFailed() && !mainWindow->shouldClose();
 }
 
 void App::mainLoop() {
+    renderer.processEvents();
+    if (renderer.hasFailed()) return;
     if (!handleWindowEvents()) return;
     renderFrame();
 }
@@ -174,12 +183,14 @@ bool App::handleWindowEvents()
 {
     mainWindow->pollEvents();
     auto [width, height] = mainWindow->getFramebufferSize();
-    if (width <= 0 || height <= 0) { return false; }
+    if (width <= 0 || height <= 0) {
+        glfwWaitEventsTimeout(0.05);
+        return false;
+    }
 
     if (mainWindow->hasResized()) {
         renderer.resizeSwapchain(width, height);
         mainWindow->setResized(false);
-        renderFrame();
     }
 
     return true;
