@@ -57,8 +57,6 @@ The ultimate goal of **C2Lux** is to become a highly flexible environment for gr
 - **Asset Loading:** tinyobjloader & stb_image
 
 
-See [modernization notes and graphics learning roadmap (Russian)](MODERNIZATION.ru.md) for dependency versions, API changes, and implementation exercises.
-
 ## Building the Project
 
 ### Prerequisites
